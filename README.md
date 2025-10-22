@@ -52,4 +52,4 @@ This repository contains the complete implementation of a Computer Vision pipeli
 
 ### Deployment Status
 
-[]https://yolov8-traffic-tracker.streamlit.app/
+https://yolov8-traffic-tracker.streamlit.app/
