@@ -1,1 +1,6 @@
 libgl1-mesa-glx
+ultralytics
+opencv-python-headless
+streamlit
+numpy
+lap # <-- FIX: Required for the tracker's matching algorithm
