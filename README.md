@@ -52,5 +52,4 @@ This repository contains the complete implementation of a Computer Vision pipeli
 
 ### Deployment Status
 
-[](https://www.google.com/search?q=Your-Streamlit-Cloud-Link-Goes-Here)
-*(Replace the placeholder link with the actual URL after deploying to Streamlit Cloud.)*
+[]https://yolov8-traffic-tracker.streamlit.app/
