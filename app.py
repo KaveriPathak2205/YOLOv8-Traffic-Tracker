@@ -304,7 +304,7 @@ def main():
                         st.markdown("---")
                         
                         # New: Overspeeding Alert Section
-                        st.subheader("🚨 Overspeeding Alerts")
+                        st.subheader("Overspeeding Alerts")
                         if overspeeding_vehicles:
                             st.warning(f"**{len(overspeeding_vehicles)}** vehicles exceeded {OVERSPEED_LIMIT_KMH} km/h!")
                             
@@ -333,15 +333,15 @@ def main():
                         st.caption("Lines: Yellow (Start Y), Red (End Y), Cyan (Center X)")
                     
                     # 4. Read and display the processed video
-                    with col2:
-                        st.subheader("Processed Video Output")
+                   # with col2:
+                    #    st.subheader("Processed Video Output")
                         
                         # Read the file bytes directly for display
-                        with open(output_video_path, 'rb') as f:
-                            video_bytes = f.read()
+                     #   with open(output_video_path, 'rb') as f:
+                      #      video_bytes = f.read()
                         
                         # Display the video
-                        st.video(video_bytes, format='video/mp4', start_time=0)
+                       # st.video(video_bytes, format='video/mp4', start_time=0)
                         
                         # Download button
                         st.download_button(
@@ -366,4 +366,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
