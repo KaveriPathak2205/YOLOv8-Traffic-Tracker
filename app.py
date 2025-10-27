@@ -337,8 +337,8 @@ def main():
                     #    st.subheader("Processed Video Output")
                         
                         # Read the file bytes directly for display
-                     #   with open(output_video_path, 'rb') as f:
-                      #      video_bytes = f.read()
+                        with open(output_video_path, 'rb') as f:
+                            video_bytes = f.read()
                         
                         # Display the video
                        # st.video(video_bytes, format='video/mp4', start_time=0)
@@ -366,5 +366,6 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
 
