@@ -333,8 +333,8 @@ def main():
                         st.caption("Lines: Yellow (Start Y), Red (End Y), Cyan (Center X)")
                     
                     # 4. Read and display the processed video
-                   # with col2:
-                    #    st.subheader("Processed Video Output")
+                    with col2:
+                        st.subheader("Processed Video Output")
                         
                         # Read the file bytes directly for display
                         with open(output_video_path, 'rb') as f:
@@ -366,6 +366,7 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
 
 
