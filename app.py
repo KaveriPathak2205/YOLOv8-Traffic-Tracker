@@ -18,6 +18,8 @@ st.set_page_config(
 CLASSES_TO_TRACK = [2, 3, 5, 7] 
 # Speed calculation constants (Meters per Second to Km/Hour)
 MTS_TO_KMH = 3.6
+# Overspeeding Threshold
+OVERSPEED_LIMIT_KMH = 60.0
 
 # Virtual Counting Lines (Normalized 0 to 1000)
 # Speed is calculated between line_start and line_end (Y-coordinates)
@@ -161,7 +163,13 @@ def process_video_stream(input_video_path, output_video_path, fps, width, height
 
                 
                 # Update annotation text
+                speed_text_color = (255, 255, 255) # White default
+                
                 if vehicle.speed_kmh > 0:
+                    # Check for overspeeding to change color
+                    if vehicle.speed_kmh > OVERSPEED_LIMIT_KMH:
+                        speed_text_color = (0, 0, 255) # Red for overspeeding
+                    
                     # Show direction (L2R or R2L) based on the first letter of the direction stored
                     dir_abbr = vehicle.direction.split('-')[0][0] if vehicle.direction else '?'
                     speed_text = f"{vehicle.speed_kmh:.1f} km/h ({dir_abbr})"
@@ -178,7 +186,7 @@ def process_video_stream(input_video_path, output_video_path, fps, width, height
                 
                 cv2.rectangle(frame, (text_x, text_y_top - text_h - 5), (text_x + text_w + 10, text_y_top), (0, 0, 0), -1)
                 cv2.putText(frame, speed_text, (text_x + 5, text_y_top - 5), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, speed_text_color, 2)
 
 
         # Draw detection results (Bounding boxes and IDs are drawn by the model.plot() method)
@@ -251,7 +259,6 @@ def main():
         cap.release()
         
         # 2. Define the output file path in a robust way
-        # Use tempfile.NamedTemporaryFile for output, but explicitly keep it open
         output_video_path = None
         
         try:
@@ -278,6 +285,13 @@ def main():
                     
                     avg_speed = np.mean(speeds) if speeds else 0
                     max_speed = np.max(speeds) if speeds else 0
+                    
+                    # --- New: Overspeeding Check ---
+                    overspeeding_vehicles = [
+                        (v.track_id, v.speed_kmh) 
+                        for v in vehicle_registry.values() 
+                        if v.speed_kmh > OVERSPEED_LIMIT_KMH
+                    ]
 
                     # Display Metrics
                     with col1:
@@ -286,6 +300,24 @@ def main():
                              st.metric("Total Vehicles Counted", f"{total_vehicles}")
                         with col2_r1:
                              st.metric("Average Speed Estimated", f"{avg_speed:.1f} km/h")
+                        
+                        st.markdown("---")
+                        
+                        # New: Overspeeding Alert Section
+                        st.subheader("🚨 Overspeeding Alerts")
+                        if overspeeding_vehicles:
+                            st.warning(f"**{len(overspeeding_vehicles)}** vehicles exceeded {OVERSPEED_LIMIT_KMH} km/h!")
+                            
+                            # Prepare data for display
+                            overspeed_data = [
+                                {"ID": id, "Speed (km/h)": f"{speed:.1f}"} 
+                                for id, speed in overspeeding_vehicles
+                            ]
+                            
+                            # Display as a table/dataframe
+                            st.dataframe(overspeed_data, use_container_width=True, hide_index=True)
+                        else:
+                            st.success(f"No vehicles detected over {OVERSPEED_LIMIT_KMH} km/h.")
                         
                         st.markdown("---")
                         st.caption("Directional Traffic Counts")
@@ -325,7 +357,6 @@ def main():
                 os.remove(input_video_path)
             if output_video_path and os.path.exists(output_video_path):
                 # Ensure the file is not deleted until after st.video has completed reading
-                # Note: Streamlit should handle this better now with the read-and-display block
                 os.remove(output_video_path)
 
     else:
