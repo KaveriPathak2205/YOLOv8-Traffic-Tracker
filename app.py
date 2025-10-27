@@ -73,7 +73,7 @@ def process_video_stream(input_video_path, output_video_path, fps, width, height
     global vehicle_registry
     vehicle_registry = {} # Reset registry for new video
     
-    st.info("Starting analysis: Detection, Tracking, Speed, and Directional Counting...")
+    # st.info("Starting analysis: Detection, Tracking, Speed, and Directional Counting...")
     
     cap = cv2.VideoCapture(input_video_path)
     if not cap.isOpened():
@@ -162,14 +162,22 @@ def process_video_stream(input_video_path, output_video_path, fps, width, height
                 
                 # Update annotation text
                 if vehicle.speed_kmh > 0:
-                    speed_text = f"{vehicle.speed_kmh:.1f} km/h ({vehicle.direction.split('-')[0]})"
+                    # Show direction (L2R or R2L) based on the first letter of the direction stored
+                    dir_abbr = vehicle.direction.split('-')[0][0] if vehicle.direction else '?'
+                    speed_text = f"{vehicle.speed_kmh:.1f} km/h ({dir_abbr})"
                 else:
                     speed_text = f"ID {track_id}"
                 
                 # Draw speed label on the frame
                 (text_w, text_h), _ = cv2.getTextSize(speed_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
-                cv2.rectangle(frame, (int(x_c - w/2), int(y_c - h/2 - text_h - 10)), (int(x_c - w/2) + text_w + 10, int(y_c - h/2 - 5)), (0, 0, 0), -1)
-                cv2.putText(frame, speed_text, (int(x_c - w/2 + 5), int(y_c - h/2 - 10)), 
+                
+                # Use bounding box position for text placement
+                # (x_c - w/2) is the top-left x corner of the bounding box
+                text_x = int(x_c - w/2)
+                text_y_top = int(y_c - h/2 - 10)
+                
+                cv2.rectangle(frame, (text_x, text_y_top - text_h - 5), (text_x + text_w + 10, text_y_top), (0, 0, 0), -1)
+                cv2.putText(frame, speed_text, (text_x + 5, text_y_top - 5), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
 
@@ -223,85 +231,102 @@ def main():
     if uploaded_file is not None:
         
         # 1. Save the uploaded file to a temporary location
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tfile:
-            tfile.write(uploaded_file.read())
-            input_video_path = tfile.name
+        # Use tempfile.NamedTemporaryFile for input
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tfile_in:
+            tfile_in.write(uploaded_file.read())
+            input_video_path = tfile_in.name
         
         st.sidebar.success(f"File uploaded: {uploaded_file.name}")
 
         # Get video properties
         cap = cv2.VideoCapture(input_video_path)
+        if not cap.isOpened():
+            st.error("Could not read video metadata.")
+            os.remove(input_video_path)
+            return
+
         fps = int(cap.get(cv2.CAP_PROP_FPS))
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         cap.release()
         
-        # Define the output path in another temporary file
-        temp_dir = tempfile.gettempdir()
-        output_video_path = os.path.join(temp_dir, f"tracked_{os.path.basename(input_video_path)}")
-
-        st.subheader("Results")
-        col1, col2 = st.columns([1, 2])
+        # 2. Define the output file path in a robust way
+        # Use tempfile.NamedTemporaryFile for output, but explicitly keep it open
+        output_video_path = None
         
-        # 3. Process the video
-        with st.spinner("Analyzing traffic video..."):
-            if process_video_stream(input_video_path, output_video_path, fps, width, height, ppm_factor):
+        try:
+            # Use a NamedTemporaryFile for the output video
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tfile_out:
+                output_video_path = tfile_out.name
+            
+                st.subheader("Results")
+                col1, col2 = st.columns([1, 2])
                 
-                # --- Metric Calculation (Final Summary) ---
-                speeds = [v.speed_kmh for v in vehicle_registry.values() if v.speed_kmh > 0]
-                
-                total_vehicles = len([v for v in vehicle_registry.values() if v.is_counted])
-                
-                # NEW: Directional Counts
-                left_to_right_count = len([v for v in vehicle_registry.values() 
-                                           if v.is_counted and v.direction == 'Left-to-Right'])
-                right_to_left_count = len([v for v in vehicle_registry.values() 
-                                           if v.is_counted and v.direction == 'Right-to-Left'])
-                
-                avg_speed = np.mean(speeds) if speeds else 0
-                max_speed = np.max(speeds) if speeds else 0
+                # 3. Process the video
+                if process_video_stream(input_video_path, output_video_path, fps, width, height, ppm_factor):
+                    
+                    # --- Metric Calculation (Final Summary) ---
+                    speeds = [v.speed_kmh for v in vehicle_registry.values() if v.speed_kmh > 0]
+                    
+                    total_vehicles = len([v for v in vehicle_registry.values() if v.is_counted])
+                    
+                    # Directional Counts
+                    left_to_right_count = len([v for v in vehicle_registry.values() 
+                                               if v.is_counted and v.direction == 'Left-to-Right'])
+                    right_to_left_count = len([v for v in vehicle_registry.values() 
+                                               if v.is_counted and v.direction == 'Right-to-Left'])
+                    
+                    avg_speed = np.mean(speeds) if speeds else 0
+                    max_speed = np.max(speeds) if speeds else 0
 
-                with col1:
-                    # Row 1: Total & Avg Speed
-                    col1_r1, col2_r1 = st.columns(2)
-                    with col1_r1:
-                         st.metric("Total Vehicles Counted", f"{total_vehicles}")
-                    with col2_r1:
-                         st.metric("Average Speed Estimated", f"{avg_speed:.1f} km/h")
+                    # Display Metrics
+                    with col1:
+                        col1_r1, col2_r1 = st.columns(2)
+                        with col1_r1:
+                             st.metric("Total Vehicles Counted", f"{total_vehicles}")
+                        with col2_r1:
+                             st.metric("Average Speed Estimated", f"{avg_speed:.1f} km/h")
+                        
+                        st.markdown("---")
+                        st.caption("Directional Traffic Counts")
+                        col1_r2, col2_r2 = st.columns(2)
+                        with col1_r2:
+                             st.metric("⬅️ Right to Left", f"{right_to_left_count}")
+                        with col2_r2:
+                             st.metric("➡️ Left to Right", f"{left_to_right_count}")
+                        
+                        st.markdown("---")
+                        st.metric("Max Speed Recorded", f"{max_speed:.1f} km/h")
+                        st.info(f"Using a PPM factor of **{ppm_factor}**")
+                        st.caption("Lines: Yellow (Start Y), Red (End Y), Cyan (Center X)")
                     
-                    # Row 2: Directional Counts
-                    st.markdown("---")
-                    st.caption("Directional Traffic Counts")
-                    col1_r2, col2_r2 = st.columns(2)
-                    with col1_r2:
-                         st.metric("⬅️ Right to Left", f"{right_to_left_count}")
-                    with col2_r2:
-                         st.metric("➡️ Left to Right", f"{left_to_right_count}")
-                    
-                    st.markdown("---")
-                    st.metric("Max Speed Recorded", f"{max_speed:.1f} km/h")
-                    st.info(f"Using a PPM factor of **{ppm_factor}**")
-                    st.caption("Lines: Yellow (Start Y), Red (End Y), Cyan (Center X)")
+                    # 4. Read and display the processed video
+                    with col2:
+                        st.subheader("Processed Video Output")
+                        
+                        # Read the file bytes directly for display
+                        with open(output_video_path, 'rb') as f:
+                            video_bytes = f.read()
+                        
+                        # Display the video
+                        st.video(video_bytes, format='video/mp4', start_time=0)
+                        
+                        # Download button
+                        st.download_button(
+                            label="Download Processed Video",
+                            data=video_bytes,
+                            file_name=f"tracked_{uploaded_file.name}",
+                            mime="video/mp4"
+                        )
                 
-                # 4. Read and display the processed video
-                with col2:
-                    st.subheader("Processed Video Output")
-                    with open(output_video_path, 'rb') as f:
-                        video_bytes = f.read()
-                    
-                    st.video(video_bytes, format='video/mp4', start_time=0)
-                    
-                    st.download_button(
-                        label="Download Processed Video",
-                        data=video_bytes,
-                        file_name=f"tracked_{uploaded_file.name}",
-                        mime="video/mp4"
-                    )
-
-        # 5. Cleanup temporary files
-        os.remove(input_video_path)
-        if os.path.exists(output_video_path):
-             os.remove(output_video_path)
+        finally:
+            # 5. Cleanup temporary files regardless of success/failure
+            if os.path.exists(input_video_path):
+                os.remove(input_video_path)
+            if output_video_path and os.path.exists(output_video_path):
+                # Ensure the file is not deleted until after st.video has completed reading
+                # Note: Streamlit should handle this better now with the read-and-display block
+                os.remove(output_video_path)
 
     else:
         st.info("Please upload a traffic video file and set the PPM factor to begin analysis.")
