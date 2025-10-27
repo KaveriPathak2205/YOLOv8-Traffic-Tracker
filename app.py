@@ -19,7 +19,7 @@ CLASSES_TO_TRACK = [2, 3, 5, 7]
 # Speed calculation constants (Meters per Second to Km/Hour)
 MTS_TO_KMH = 3.6
 # Overspeeding Threshold
-OVERSPEED_LIMIT_KMH = 60.0
+OVERSPEED_LIMIT_KMH = 20.0
 
 # Virtual Counting Lines (Normalized 0 to 1000)
 # Speed is calculated between line_start and line_end (Y-coordinates)
@@ -366,3 +366,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
