@@ -20,7 +20,7 @@ CLASSES_TO_TRACK = [2, 3, 5, 7]
 MTS_TO_KMH = 3.6
 
 # Virtual Counting Lines (Normalized 0 to 1000)
-# Speed is calculated between line_start and line_end
+# Speed is calculated between line_start and line_end (Y-coordinates)
 LINE_START_NORM = 350 # Start line for speed calculation
 LINE_END_NORM = 750   # End line for speed calculation
 
@@ -33,7 +33,8 @@ class VehicleData:
         self.end_frame = None
         self.speed_kmh = 0.0
         self.is_counted = False
-        self.direction = "N/A"
+        self.last_x = None # New: for directional tracking
+        self.direction = None # New: 'Left-to-Right' or 'Right-to-Left'
 
 # Global dictionary to store data for all tracked vehicles
 vehicle_registry = {}
@@ -51,9 +52,6 @@ model = load_model()
 def calculate_speed(pixel_distance, total_frames, fps, ppm_factor):
     """
     Calculates speed in Km/H based on pixel distance, time, and PPM factor.
-    
-    Formula: Speed (m/s) = (Pixel Distance / PPM Factor) / Time (seconds)
-    Time (seconds) = Total Frames / FPS
     """
     if total_frames <= 0 or fps <= 0 or ppm_factor <= 0:
         return 0.0
@@ -75,7 +73,7 @@ def process_video_stream(input_video_path, output_video_path, fps, width, height
     global vehicle_registry
     vehicle_registry = {} # Reset registry for new video
     
-    st.info("Starting analysis: Detection, Tracking, and Speed Estimation...")
+    st.info("Starting analysis: Detection, Tracking, Speed, and Directional Counting...")
     
     cap = cv2.VideoCapture(input_video_path)
     if not cap.isOpened():
@@ -92,7 +90,10 @@ def process_video_stream(input_video_path, output_video_path, fps, width, height
     # Calculate pixel positions of virtual lines
     line_start_y = int(height * (LINE_START_NORM / 1000))
     line_end_y = int(height * (LINE_END_NORM / 1000))
-
+    
+    # NEW: Vertical Center Line for Directional Tracking
+    center_x = width // 2
+    
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
@@ -108,8 +109,9 @@ def process_video_stream(input_video_path, output_video_path, fps, width, height
         )
         
         # Draw virtual lines on the frame
-        cv2.line(frame, (0, line_start_y), (width, line_start_y), (0, 255, 255), 2) # Yellow
-        cv2.line(frame, (0, line_end_y), (width, line_end_y), (0, 0, 255), 2)     # Red
+        cv2.line(frame, (0, line_start_y), (width, line_start_y), (0, 255, 255), 2) # Yellow (Start)
+        cv2.line(frame, (0, line_end_y), (width, line_end_y), (0, 0, 255), 2)     # Red (End)
+        cv2.line(frame, (center_x, 0), (center_x, height), (255, 255, 0), 1)      # Cyan (Center X)
         
         # --- METRIC CALCULATION LOGIC ---
         if results[0].boxes.id is not None:
@@ -126,14 +128,23 @@ def process_video_stream(input_video_path, output_video_path, fps, width, height
                 
                 vehicle = vehicle_registry[track_id]
                 
-                # 1. Start Measurement
-                # Vehicle's bottom center crosses the start line
+                # 1. Determine Direction (Before tracking start/end)
+                if vehicle.last_x is not None:
+                    if x_c > vehicle.last_x:
+                        # Vehicle is currently moving right
+                        vehicle.direction = 'Left-to-Right' 
+                    elif x_c < vehicle.last_x:
+                        # Vehicle is currently moving left
+                        vehicle.direction = 'Right-to-Left'
+                
+                vehicle.last_x = x_c # Store current X position
+
+                # 2. Start Speed Measurement (Y-axis crossing)
                 if y_c > line_start_y and vehicle.start_frame is None:
                     vehicle.start_frame = frame_count
                     vehicle.start_y = y_c
 
-                # 2. End Measurement and Calculate Speed
-                # Vehicle's bottom center crosses the end line AND has a start time
+                # 3. End Speed Measurement and Calculate Speed
                 if y_c > line_end_y and vehicle.start_frame is not None and vehicle.end_frame is None:
                     vehicle.end_frame = frame_count
                     vehicle.end_y = y_c
@@ -146,12 +157,16 @@ def process_video_stream(input_video_path, output_video_path, fps, width, height
                     
                     # Calculate and store speed
                     vehicle.speed_kmh = calculate_speed(pixel_distance, frames_elapsed, fps, ppm_factor)
-                    vehicle.is_counted = True # Mark as complete
+                    vehicle.is_counted = True # Mark as complete for summary
+
                 
                 # Update annotation text
-                speed_text = f"{vehicle.speed_kmh:.1f} km/h" if vehicle.speed_kmh > 0 else f"ID {track_id}"
+                if vehicle.speed_kmh > 0:
+                    speed_text = f"{vehicle.speed_kmh:.1f} km/h ({vehicle.direction.split('-')[0]})"
+                else:
+                    speed_text = f"ID {track_id}"
                 
-                # Draw speed label on the frame (manual plotting needed for custom text)
+                # Draw speed label on the frame
                 (text_w, text_h), _ = cv2.getTextSize(speed_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
                 cv2.rectangle(frame, (int(x_c - w/2), int(y_c - h/2 - text_h - 10)), (int(x_c - w/2) + text_w + 10, int(y_c - h/2 - 5)), (0, 0, 0), -1)
                 cv2.putText(frame, speed_text, (int(x_c - w/2 + 5), int(y_c - h/2 - 10)), 
@@ -182,9 +197,9 @@ def main():
     st.title("🚦 YOLOv8 Vehicle Tracking and Speed Analysis")
     st.markdown(
         """
-        This application uses your **Multi-Object Tracking Framework** (YOLOv8 + Kalman-based tracking) to detect vehicles and estimate their speed.
+        This application uses your **Multi-Object Tracking Framework** (YOLOv8 + Kalman-based tracking) to detect vehicles, estimate their speed, and count them by direction.
         
-        **Virtual Calibration is Required:** Speed calculation relies on the **Pixels Per Meter (PPM) factor**, which you must estimate based on your video's camera angle.
+        **Note:** Speed estimation requires the **Pixels Per Meter (PPM) factor** to be set in the sidebar for accurate results.
         """
     )
 
@@ -232,20 +247,41 @@ def main():
         with st.spinner("Analyzing traffic video..."):
             if process_video_stream(input_video_path, output_video_path, fps, width, height, ppm_factor):
                 
-                # --- Metric Display (Final Summary) ---
+                # --- Metric Calculation (Final Summary) ---
                 speeds = [v.speed_kmh for v in vehicle_registry.values() if v.speed_kmh > 0]
                 
                 total_vehicles = len([v for v in vehicle_registry.values() if v.is_counted])
+                
+                # NEW: Directional Counts
+                left_to_right_count = len([v for v in vehicle_registry.values() 
+                                           if v.is_counted and v.direction == 'Left-to-Right'])
+                right_to_left_count = len([v for v in vehicle_registry.values() 
+                                           if v.is_counted and v.direction == 'Right-to-Left'])
+                
                 avg_speed = np.mean(speeds) if speeds else 0
                 max_speed = np.max(speeds) if speeds else 0
 
                 with col1:
-                    st.metric("Total Vehicles Tracked & Counted", f"{total_vehicles}")
-                    st.metric("Average Speed Estimated", f"{avg_speed:.1f} km/h")
+                    # Row 1: Total & Avg Speed
+                    col1_r1, col2_r1 = st.columns(2)
+                    with col1_r1:
+                         st.metric("Total Vehicles Counted", f"{total_vehicles}")
+                    with col2_r1:
+                         st.metric("Average Speed Estimated", f"{avg_speed:.1f} km/h")
+                    
+                    # Row 2: Directional Counts
+                    st.markdown("---")
+                    st.caption("Directional Traffic Counts")
+                    col1_r2, col2_r2 = st.columns(2)
+                    with col1_r2:
+                         st.metric("⬅️ Right to Left", f"{right_to_left_count}")
+                    with col2_r2:
+                         st.metric("➡️ Left to Right", f"{left_to_right_count}")
+                    
+                    st.markdown("---")
                     st.metric("Max Speed Recorded", f"{max_speed:.1f} km/h")
                     st.info(f"Using a PPM factor of **{ppm_factor}**")
-                    st.markdown("---")
-                    st.caption("Lines: Yellow (Start), Red (End)")
+                    st.caption("Lines: Yellow (Start Y), Red (End Y), Cyan (Center X)")
                 
                 # 4. Read and display the processed video
                 with col2:
@@ -270,7 +306,7 @@ def main():
     else:
         st.info("Please upload a traffic video file and set the PPM factor to begin analysis.")
         st.sidebar.markdown("---")
-        st.sidebar.caption("The tracking framework runs YOLOv8 and ByteTrack to estimate speed between the two virtual lines.")
+        st.sidebar.caption("The tracking framework runs YOLOv8 and ByteTrack to estimate speed and direction.")
 
 if __name__ == '__main__':
     main()
