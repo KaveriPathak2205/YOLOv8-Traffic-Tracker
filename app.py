@@ -230,7 +230,7 @@ def main():
     ppm_factor = st.sidebar.number_input(
         "Pixels Per Meter (PPM) Factor:",
         min_value=1.0,
-        value=50.0,
+        value=5.0,
         step=5.0,
         format="%f",
         help="Estimate of how many pixels correspond to 1 meter in the video scene. Adjust this value to calibrate speed."
@@ -366,6 +366,7 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
 
 
